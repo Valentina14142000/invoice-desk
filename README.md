@@ -25,7 +25,7 @@ The project is built end to end: Python APIs, a document-processing pipeline, a 
 
 ---
 
-## Why this project
+## Why this?
 
 Extracting data from invoices looks simple, but real systems fail in predictable ways: totals that do not add up, dates in inconsistent formats, missing fields, and vendors spelled five different ways. Invoice Desk is designed around catching those failures rather than hiding them:
 
