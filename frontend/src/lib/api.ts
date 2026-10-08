@@ -48,3 +48,12 @@ export async function uploadDocument(file: File): Promise<UploadResult> {
   const res = await fetch(`${BASE}/documents`, { method: "POST", body: form });
   return parse<UploadResult>(res);
 }
+
+export type ExtractResult = { invoice: Invoice; totals_match: boolean };
+
+export async function extractInvoice(file: File): Promise<ExtractResult> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${BASE}/extract`, { method: "POST", body: form });
+  return parse<ExtractResult>(res);
+}

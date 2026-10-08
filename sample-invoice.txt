@@ -1,0 +1,7 @@
+ACME Supplies Ltd
+Invoice #A-1042          Date: 28 September 2026
+
+3 x Toner cartridge @ 45.00
+1 x Delivery @ 12.50
+
+Total due: 150.00 USD
