@@ -1,7 +1,6 @@
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
 export type LineItem = { desc: string; qty: number; unit: number };
-
 export type Invoice = {
   vendor: string;
   invoice_no: string;
@@ -10,21 +9,19 @@ export type Invoice = {
   total: number;
   currency: string;
 };
-
-export type ValidationResult = { valid: boolean; totals_match: boolean };
-export type UploadResult = { filename: string; bytes: number };
+export type Extracted = Invoice & { uncertain: string[] };
+export type SavedInvoice = Invoice & { id: number; status: string; created_at: number };
 
 async function parse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let msg = `Request failed (${res.status})`;
     try {
       const body = await res.json();
-      if (Array.isArray(body.detail)) {
+      if (typeof body.detail === "string") msg = body.detail;
+      else if (Array.isArray(body.detail))
         msg = body.detail
-          .map((d: { loc: (string | number)[]; msg: string }) =>
-            `${d.loc.slice(1).join(".")}: ${d.msg}`)
+          .map((d: { loc: (string | number)[]; msg: string }) => `${d.loc.slice(1).join(".")}: ${d.msg}`)
           .join("; ");
-      }
     } catch {
       // keep the default message
     }
@@ -33,27 +30,29 @@ async function parse<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export async function validateInvoice(invoice: Invoice): Promise<ValidationResult> {
-  const res = await fetch(`${BASE}/validate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(invoice),
-  });
-  return parse<ValidationResult>(res);
-}
-
-export async function uploadDocument(file: File): Promise<UploadResult> {
+export async function extractInvoice(file: File | null, text: string): Promise<Extracted> {
   const form = new FormData();
-  form.append("file", file);
-  const res = await fetch(`${BASE}/documents`, { method: "POST", body: form });
-  return parse<UploadResult>(res);
+  if (file) form.append("file", file);
+  if (text.trim()) form.append("text", text);
+  return parse<Extracted>(await fetch(`${BASE}/extract`, { method: "POST", body: form }));
 }
 
-export type ExtractResult = { invoice: Invoice; totals_match: boolean };
-
-export async function extractInvoice(file: File): Promise<ExtractResult> {
-  const form = new FormData();
-  form.append("file", file);
-  const res = await fetch(`${BASE}/extract`, { method: "POST", body: form });
-  return parse<ExtractResult>(res);
+export async function listInvoices(): Promise<SavedInvoice[]> {
+  return parse<SavedInvoice[]>(await fetch(`${BASE}/invoices`));
 }
+
+export async function saveInvoice(inv: Invoice): Promise<SavedInvoice> {
+  return parse<SavedInvoice>(
+    await fetch(`${BASE}/invoices`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(inv),
+    }),
+  );
+}
+
+export async function deleteInvoice(id: number): Promise<void> {
+  await parse(await fetch(`${BASE}/invoices/${id}`, { method: "DELETE" }));
+}
+
+export const exportUrl = `${BASE}/invoices/export.csv`;
