@@ -1,11 +1,17 @@
 import os
+import time
 
 from google import genai
-from google.genai import types
+from google.genai import errors, types
 from pydantic import BaseModel, ValidationError
 
-MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-MAX_ATTEMPTS = 3
+MODELS = [os.getenv("GEMINI_MODEL", "gemini-3.8-flash")] + [
+    m.strip()
+    for m in os.getenv("GEMINI_FALLBACKS", "gemini-3.5-flash,gemini-3.1-flash-lite").split(",")
+    if m.strip()
+]
+RETRIES = 3
+BUSY = {429, 500, 502, 503, 504}
 
 PROMPT = (
     "You extract data from an invoice. Return the invoice fields. Use dates in "
@@ -53,19 +59,28 @@ def _contents(filename: str, content: bytes | None, content_type: str, text: str
 def extract_invoice(filename: str, content: bytes | None, content_type: str, text: str) -> InvoiceOut:
     client = genai.Client()  # reads GEMINI_API_KEY from the environment
     contents = _contents(filename, content, content_type or "", text)
-    last_error = "no response"
-    for _ in range(MAX_ATTEMPTS):
-        response = client.models.generate_content(
-            model=MODEL,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=InvoiceOut,
-                temperature=0,
-            ),
-        )
-        try:
-            return InvoiceOut.model_validate_json(response.text)
-        except (ValidationError, ValueError, TypeError) as e:
-            last_error = str(e)
-    raise ValueError(f"Could not parse the model's answer after {MAX_ATTEMPTS} tries: {last_error}")
+    last = "no response"
+
+    for model in MODELS:
+        for attempt in range(RETRIES):
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=InvoiceOut,
+                        temperature=0,
+                    ),
+                )
+                return InvoiceOut.model_validate_json(response.text)
+            except errors.APIError as e:
+                last = f"{model}: {e.code} {e.message}"
+                if e.code in BUSY:
+                    time.sleep(2 ** (attempt + 1))  # 2s, 4s, 8s
+                    continue
+                break  # 404 or auth error: try the next model
+            except (ValidationError, ValueError, TypeError) as e:
+                last = f"{model}: could not parse answer: {e}"
+
+    raise RuntimeError(f"All models failed. Last error: {last}")
