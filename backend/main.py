@@ -30,6 +30,7 @@ db.init()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED,
+    allow_origin_regex=r"https://invoice-desk[a-z0-9-]*\.vercel\.app",
     allow_methods=["*"],
     allow_headers=["*"],
 )
