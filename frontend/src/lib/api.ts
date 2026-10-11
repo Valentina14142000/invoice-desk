@@ -1,4 +1,4 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 
 export type LineItem = { desc: string; qty: number; unit: number };
 export type Invoice = {
@@ -11,6 +11,17 @@ export type Invoice = {
 };
 export type Extracted = Invoice & { uncertain: string[] };
 export type SavedInvoice = Invoice & { id: number; status: string; created_at: number };
+
+function clientId(): string {
+  const k = "invoicedesk-client-id";
+  let id = localStorage.getItem(k);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(k, id);
+  }
+  return id;
+}
+const auth = () => ({ "X-Client-Id": clientId() });
 
 async function parse<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -34,25 +45,34 @@ export async function extractInvoice(file: File | null, text: string): Promise<E
   const form = new FormData();
   if (file) form.append("file", file);
   if (text.trim()) form.append("text", text);
-  return parse<Extracted>(await fetch(`${BASE}/extract`, { method: "POST", body: form }));
+  return parse<Extracted>(await fetch(`${BASE}/extract`, { method: "POST", body: form, headers: auth() }));
 }
 
 export async function listInvoices(): Promise<SavedInvoice[]> {
-  return parse<SavedInvoice[]>(await fetch(`${BASE}/invoices`));
+  return parse<SavedInvoice[]>(await fetch(`${BASE}/invoices`, { headers: auth() }));
 }
 
 export async function saveInvoice(inv: Invoice): Promise<SavedInvoice> {
   return parse<SavedInvoice>(
     await fetch(`${BASE}/invoices`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...auth() },
       body: JSON.stringify(inv),
     }),
   );
 }
 
 export async function deleteInvoice(id: number): Promise<void> {
-  await parse(await fetch(`${BASE}/invoices/${id}`, { method: "DELETE" }));
+  await parse(await fetch(`${BASE}/invoices/${id}`, { method: "DELETE", headers: auth() }));
 }
 
-export const exportUrl = `${BASE}/invoices/export.csv`;
+export async function downloadCsv(): Promise<void> {
+  const res = await fetch(`${BASE}/invoices/export.csv`, { headers: auth() });
+  if (!res.ok) throw new Error(`Export failed (${res.status})`);
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "invoices.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}

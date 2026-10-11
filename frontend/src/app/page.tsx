@@ -5,7 +5,7 @@ import {
   Extracted,
   SavedInvoice,
   deleteInvoice,
-  exportUrl,
+  downloadCsv,
   extractInvoice,
   listInvoices,
   saveInvoice,
@@ -194,7 +194,7 @@ export default function Home() {
             <Step n={2} label="Review" active={!!cur} done={false} />
             <Step n={3} label="Save" active={false} done={false} />
           </ol>
-        </header>
+        </header><p className="rounded-md bg-slate-100 p-3 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">Demo: documents are sent to Google Gemini for reading. Please upload only sample or non-sensitive invoices.</p>
 
         {error && (
           <div role="alert" className="flex items-start justify-between gap-3 rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-900 dark:border-red-800 dark:bg-red-950/50 dark:text-red-200">
@@ -398,7 +398,7 @@ export default function Home() {
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 id="saved-h" className="text-lg font-semibold">Saved invoices</h2>
             {saved.length > 0 && (
-              <a href={exportUrl} className={btnGhost}>Export CSV</a>
+              <button onClick={downloadCsv} className={btnGhost}>Export CSV</button>
             )}
           </div>
 
