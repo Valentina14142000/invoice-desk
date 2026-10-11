@@ -5,8 +5,6 @@
 ![Next.js](https://img.shields.io/badge/Next.js-TypeScript-000000?logo=nextdotjs&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 
-**Live demo:** https://YOUR-PRODUCTION-ADDRESS
-(Free hosting: the first load can take up to a minute while the server wakes up. Please upload only sample or non-sensitive invoices.)
 
 Invoice Desk turns invoice documents into validated, structured data. Upload a PDF, photo, or text, Google Gemini extracts the fields against a strict schema, automated checks catch inconsistencies, and a reviewer corrects anything uncertain before the invoice is saved.
 
