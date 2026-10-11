@@ -37,13 +37,14 @@ Extracting data from invoices looks simple, but real systems fail in predictable
 
 | Area | Status |
 |---|---|
-| FastAPI service with health, upload, and validation endpoints | Done |
-| Pydantic invoice schema with business-rule check | Done |
-| Automated API tests (pytest) | Written, run with `python -m pytest -v` |
-| LLM extraction endpoint (`/extract`) | Planned |
-| Synthetic invoice generator and evaluation set | Planned |
-| Next.js review interface | Planned |
-| Tracing, latency, and cost tracking | Planned |
+| FastAPI service: extract, validate, save, list, delete, CSV export | Done |
+| Pydantic invoice schema with totals check | Done |
+| Gemini extraction from images, PDFs, and text (retries and model fallback) | Done |
+| SQLite storage | Done |
+| Next.js review UI with live validation and uncertain-field highlighting | Done |
+| Automated API tests | Done |
+| Evaluation set and accuracy metrics | Planned |
+| Tracing and cost tracking | Planned |
 
 This README only documents behavior that exists in the code today. Planned items are listed in the [roadmap](#roadmap).
 
