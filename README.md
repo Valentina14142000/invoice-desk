@@ -2,213 +2,227 @@
 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
-![Pydantic](https://img.shields.io/badge/Pydantic-v2-E92063)
-![Status](https://img.shields.io/badge/status-in%20development-orange)
+![Next.js](https://img.shields.io/badge/Next.js-TypeScript-000000?logo=nextdotjs&logoColor=white)
+![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
 
-**Invoice Desk** turns invoice documents into validated, structured data. A document is uploaded, an LLM extracts the fields against a strict schema, automated checks catch inconsistencies, and a reviewer corrects anything uncertain before it is accepted.
+**Live demo:** https://YOUR-PRODUCTION-ADDRESS
+(Free hosting: the first load can take up to a minute while the server wakes up. Please upload only sample or non-sensitive invoices.)
 
-The project is built end to end: Python APIs, a document-processing pipeline, a TypeScript/React/Next.js review interface, and an LLM workflow with structured outputs, retrieval, tool use, evaluations, and observability.
-
----
+Invoice Desk turns invoice documents into validated, structured data. Upload a PDF, photo, or text, Google Gemini extracts the fields against a strict schema, automated checks catch inconsistencies, and a reviewer corrects anything uncertain before the invoice is saved.
 
 ## Table of contents
 
-- [Why this project](#why-this-project)
-- [Current status](#current-status)
-- [Architecture](#architecture)
-- [Quick start](#quick-start)
-- [Demonstrations](#demonstrations)
+- [Features](#features)
+- [How it works](#how-it-works)
+- [Tech stack](#tech-stack)
+- [Run locally](#run-locally)
+- [Configuration](#configuration)
 - [API reference](#api-reference)
-- [Project structure](#project-structure)
+- [Demonstrations](#demonstrations)
+- [Deployment](#deployment)
+- [Limitations](#limitations)
 - [Roadmap](#roadmap)
-- [Design decisions](#design-decisions)
+- [License](#license)
 
----
+## Features
 
-## Why this?
+- **Multi-format extraction:** PDFs, images (photos, screenshots, scans), and plain text, read directly by Gemini.
+- **Schema-bound output:** the model fills a fixed schema, and a stricter Pydantic model re-validates the result.
+- **Automatic checks:** line items must sum to the document total, quantities must be positive, and every mismatch is flagged for review.
+- **Review interface:** the original document sits next to editable fields, and fields the model was unsure about are highlighted.
+- **Resilient model calls:** retries with backoff when the model is busy, then falls back to other models.
+- **Saved invoices:** stored per visitor, with status (Accepted or Needs review), delete, and CSV export.
+- **Abuse protection:** upload size limits, an hourly extraction limit per IP, and per-visitor data separation.
 
-Extracting data from invoices looks simple, but real systems fail in predictable ways: totals that do not add up, dates in inconsistent formats, missing fields, and vendors spelled five different ways. Invoice Desk is designed around catching those failures rather than hiding them:
-
-- **A single schema defines the data.** Pydantic models are the one source of truth for the invoice shape, so the API, the validation, and (later) the LLM output all agree.
-- **Validation is separate from extraction.** Business rules, such as line items summing to the total, run on every result regardless of where it came from.
-- **Humans stay in the loop.** Anything that fails a check is routed to review instead of being silently accepted.
-
-## Current status
-
-| Area | Status |
-|---|---|
-| FastAPI service: extract, validate, save, list, delete, CSV export | Done |
-| Pydantic invoice schema with totals check | Done |
-| Gemini extraction from images, PDFs, and text (retries and model fallback) | Done |
-| SQLite storage | Done |
-| Next.js review UI with live validation and uncertain-field highlighting | Done |
-| Automated API tests | Done |
-| Evaluation set and accuracy metrics | Planned |
-| Tracing and cost tracking | Planned |
-
-This README only documents behavior that exists in the code today. Planned items are listed in the [roadmap](#roadmap).
-
-## Architecture
-
-The diagram shows the target design. Only the FastAPI service, the schema, and the validation step exist today; the rest are in progress.
+## How it works
 
 ```mermaid
 flowchart LR
-    A[Upload document] --> B[FastAPI service]
-    B --> C[Parse text and tables]
-    C --> D[Retrieve vendor history]
-    D --> E[LLM extraction<br/>schema-bound output]
-    E --> F{Validation checks}
-    F -- pass --> G[(Accepted data)]
-    F -- fail --> H[Human review UI]
-    H --> G
-    E -.-> I[Traces and evals]
+    A[Upload file or paste text] --> B[Next.js review UI]
+    B -->|POST /extract| C[FastAPI]
+    C --> D[Gemini<br/>schema-bound JSON<br/>retries and fallbacks]
+    D --> E{Pydantic validation<br/>and totals check}
+    E --> B
+    B -->|POST /invoices| F[(SQLite)]
+    F --> G[Saved list and CSV export]
 ```
 
-## Quick start
+1. The browser sends the file to `/extract` along with an anonymous visitor ID.
+2. The backend sends the document and a strict prompt to Gemini and requests JSON matching a schema.
+3. The response is validated again by the stricter `Invoice` model. Unparseable answers are retried.
+4. The UI shows the extracted fields next to the original. The reviewer corrects them, and the totals check updates live.
+5. Saving stores the invoice with its status. Invoices whose totals do not match are saved as "Needs review".
 
-**Requirements:** Python 3.11 or newer.
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Backend | Python, FastAPI, Pydantic, SQLite |
+| LLM | Google Gemini via the `google-genai` SDK |
+| Frontend | Next.js, React, TypeScript, Tailwind CSS |
+| Tests | pytest, FastAPI TestClient |
+| Hosting | Vercel (frontend), Render (backend) |
+
+## Run locally
+
+**Requirements:** Python 3.11+, Node.js 20+, and a free Gemini API key from [Google AI Studio](https://aistudio.google.com).
+
+**Backend**
 
 ```bash
 git clone https://github.com/Valentina14142000/invoice-desk.git
 cd invoice-desk/backend
 
 python3 -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-python -m pytest -v              # run the tests
-uvicorn main:app --reload        # start the API on http://127.0.0.1:8000
+echo "GEMINI_API_KEY=your-key-here" > .env
+
+python -m pytest -v                # run the tests
+python -m uvicorn main:app --reload
 ```
 
-Open **http://127.0.0.1:8000/docs** for the interactive API explorer (Swagger UI), generated automatically from the code.
+The API runs at http://127.0.0.1:8000, with interactive docs at `/docs`.
+
+**Frontend** (in a second terminal)
+
+```bash
+cd invoice-desk/frontend
+npm install
+echo "NEXT_PUBLIC_API_URL=http://127.0.0.1:8000" > .env.local
+npm run dev
+```
+
+Open http://localhost:3000.
+
+## Configuration
+
+**Backend** (`backend/.env` locally, environment settings on Render)
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `GEMINI_API_KEY` | Gemini API key (required) | none |
+| `GEMINI_MODEL` | Primary model | `gemini-3.8-flash` |
+| `GEMINI_FALLBACKS` | Comma-separated backup models | `gemini-3.5-flash,gemini-3.1-flash-lite` |
+| `ALLOWED_ORIGINS` | Comma-separated allowed frontend origins | `http://localhost:3000,http://127.0.0.1:3000` |
+| `EXTRACT_PER_HOUR` | Extractions allowed per IP per hour | `10` |
+
+**Frontend**
+
+| Variable | Purpose |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | Backend base URL, with no trailing slash |
+
+Never commit `.env` files. Model names change over time, so update `GEMINI_MODEL` if Google retires one.
+
+## API reference
+
+All `/invoices` and `/extract` requests require an `X-Client-Id` header (8 to 64 letters, digits, or dashes). The web app generates one per browser and uses it to keep each visitor's data separate.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/health` | Liveness check |
+| `POST` | `/validate` | Validate an invoice JSON body and run the totals check |
+| `POST` | `/extract` | Extract fields from an uploaded file (`file`) or pasted text (`text`) |
+| `GET` | `/invoices` | List the visitor's saved invoices |
+| `POST` | `/invoices` | Save an invoice. Status is set automatically |
+| `DELETE` | `/invoices/{id}` | Delete a saved invoice |
+| `GET` | `/invoices/export.csv` | Download saved invoices as CSV, one row per line item |
+
+Limits: 8 MB per file, 50,000 characters of pasted text, 10 extractions per hour per IP.
+
+### Invoice schema
+
+| Field | Type | Rules |
+|---|---|---|
+| `vendor`, `invoice_no`, `date` | string | required |
+| `lines[].desc` | string | required |
+| `lines[].qty` | number | greater than 0 |
+| `lines[].unit` | number | 0 or greater |
+| `total` | number | required |
+| `currency` | string | defaults to `USD` |
+
+**Business rule:** `sum(qty * unit)` must equal `total` within 0.01.
 
 ## Demonstrations
 
-All examples run against the local server started in the quick start. Run them in a second terminal.
-
-### 1. Health check
+### 1. Extract an invoice
 
 ```bash
-curl http://127.0.0.1:8000/health
+curl -X POST http://127.0.0.1:8000/extract \
+  -H "X-Client-Id: demo-client-1234" \
+  -F "file=@sample-invoice.txt"
 ```
+
+Example response (the values depend on the model):
 
 ```json
-{"ok": true}
+{
+  "vendor": "ACME Supplies Ltd",
+  "invoice_no": "A-1042",
+  "date": "2026-09-28",
+  "currency": "USD",
+  "lines": [
+    {"desc": "Toner cartridge", "qty": 3, "unit": 45.0},
+    {"desc": "Delivery", "qty": 1, "unit": 12.5}
+  ],
+  "total": 150.0,
+  "uncertain": []
+}
 ```
 
-### 2. Catch an invoice whose total does not add up
+### 2. Catch a total that does not add up
 
-The line items below sum to **147.50** (3 x 45.00 + 1 x 12.50), but the document claims a total of **150.00**:
+The lines above sum to 147.50, but the document says 150.00:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/validate \
   -H "Content-Type: application/json" \
-  -d '{
-    "vendor": "ACME Supplies Ltd",
-    "invoice_no": "A-1042",
-    "date": "2026-09-28",
-    "lines": [
-      {"desc": "Toner cartridge", "qty": 3, "unit": 45.00},
-      {"desc": "Delivery", "qty": 1, "unit": 12.50}
-    ],
-    "total": 150.00,
-    "currency": "USD"
-  }'
+  -d '{"vendor":"ACME","invoice_no":"A-1","date":"2026-09-28",
+       "lines":[{"desc":"Toner","qty":3,"unit":45},{"desc":"Delivery","qty":1,"unit":12.5}],
+       "total":150,"currency":"USD"}'
 ```
 
 ```json
 {"valid": true, "totals_match": false}
 ```
 
-The schema accepts the document (`valid`), but the business rule flags the mismatch (`totals_match: false`). In the planned pipeline, this is what routes an invoice to human review.
+In the web app this shows as an amber "Needs review" banner stating how far off the total is.
 
-### 3. A consistent invoice passes
+### 3. Malformed input is rejected
 
-Change `"total"` to `147.50` in the request above:
+A line with `"qty": 0` returns HTTP 422 with a message naming the field, before any business logic runs.
 
-```json
-{"valid": true, "totals_match": true}
-```
+## Deployment
 
-### 4. Malformed input is rejected
+- **Backend (Render):** root directory `backend`, build command `pip install -r requirements.txt`, start command `uvicorn main:app --host 0.0.0.0 --port $PORT`, health check path `/health`. Set `GEMINI_API_KEY` and `ALLOWED_ORIGINS`.
+- **Frontend (Vercel):** root directory `frontend`. Set `NEXT_PUBLIC_API_URL` to the Render address and redeploy, because the value is applied at build time.
+- The backend also allows origins matching `invoice-desk*.vercel.app` so preview deployments work.
 
-A line item with `"qty": 0` violates the schema (`qty` must be greater than 0), so the API returns **HTTP 422** with a detail message pointing at the offending field, before any business logic runs.
+## Limitations
 
-### 5. Upload a document
-
-```bash
-curl -X POST http://127.0.0.1:8000/documents -F "file=@sample-invoice.pdf"
-```
-
-```json
-{"filename": "sample-invoice.pdf", "bytes": 48213}
-```
-
-The `bytes` value is the size of your file. At this stage, the endpoint only receives the file; parsing and extraction are the next milestones.
-
-### 6. Interactive docs
-
-Open `/docs` in a browser to try every endpoint from the UI.
-
-## API reference
-
-| Method | Path | Description | Success response |
-|---|---|---|---|
-| `GET` | `/health` | Liveness check | `{"ok": true}` |
-| `POST` | `/documents` | Upload a file (multipart form field `file`) | `{"filename", "bytes"}` |
-| `POST` | `/validate` | Validate an invoice JSON body and run the totals check | `{"valid", "totals_match"}` |
-
-### Invoice schema
-
-| Field | Type | Rules |
-|---|---|---|
-| `vendor` | string | required |
-| `invoice_no` | string | required |
-| `date` | string | required |
-| `lines` | list of line items | required |
-| `lines[].desc` | string | required |
-| `lines[].qty` | number | must be greater than 0 |
-| `lines[].unit` | number | must be 0 or greater |
-| `total` | number | required |
-| `currency` | string | defaults to `USD` |
-
-**Business rule:** `sum(qty * unit)` over all lines must equal `total` within 0.01.
-
-## Project structure
-
-```
-invoice-desk/
-├── README.md
-├── .gitignore
-└── backend/
-    ├── main.py            # FastAPI app and endpoints
-    ├── schemas.py         # Pydantic models and the totals check
-    ├── test_api.py        # pytest tests
-    └── requirements.txt
-```
+- **Storage is temporary on free hosting.** SQLite lives on the server's disk, so saved invoices can disappear when the server restarts. A hosted Postgres would fix this.
+- **Cold starts.** The free backend sleeps when idle, so the first request can take up to a minute.
+- **Shared quota.** All users share one free Gemini quota. Busy or exhausted-quota errors are shown in the UI.
+- **No accounts.** Visitors are identified by an anonymous ID stored in their browser. Clearing browser data loses access to saved invoices.
+- **Privacy.** Documents are sent to Google Gemini. The free tier may use submitted content to improve Google's products, so use sample data only.
 
 ## Roadmap
 
-- [x] FastAPI skeleton, invoice schema, validation endpoint
-- [x] Tests for the health check and the totals rule
-- [ ] PDF text and table extraction, with an OCR fallback for scans
-- [ ] `/extract` endpoint using Claude with schema-bound structured output and retries
-- [ ] Synthetic invoice generator with ground-truth labels
-- [ ] Evaluation harness reporting field-level accuracy, with a regression run on each prompt change
-- [ ] Retrieval over past vendors to normalize names and categories
-- [ ] Tool use (currency conversion, vendor lookup)
-- [ ] Next.js and TypeScript interface: upload, plus a review screen with low-confidence fields highlighted
-- [ ] Tracing for every pipeline step, with latency, token, and cost reporting
-- [ ] Persistent storage (Postgres) and a background worker for processing
-
-## Design decisions
-
-- **Pydantic as the contract.** One model defines request validation, API docs, and later the LLM output format, which prevents the three from drifting apart.
-- **Deterministic checks around a probabilistic model.** The LLM proposes values; plain code verifies them. This keeps failures visible and testable.
-- **Evaluations before optimization.** A labeled synthetic dataset comes before prompt tuning so that every change can be measured.
-- **Secrets stay out of the repo.** API keys belong in a local `.env` file, which is git-ignored.
+- [x] FastAPI service, Pydantic schema, totals validation
+- [x] Gemini extraction from images, PDFs, and text, with retries and model fallback
+- [x] Review UI with side-by-side document view and uncertain-field highlighting
+- [x] SQLite storage, per-visitor separation, CSV export
+- [x] Automated tests (6)
+- [x] Deployed on Vercel and Render
+- [ ] Persistent database (hosted Postgres)
+- [ ] Evaluation set with ground-truth labels and field-level accuracy reporting
+- [ ] Tracing: latency, model used, retries, and cost per extraction
+- [ ] Retrieval over past vendors to normalize names
+- [ ] User accounts
 
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
