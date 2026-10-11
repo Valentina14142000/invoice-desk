@@ -79,3 +79,8 @@ def export_csv():
         buf.getvalue(), media_type="text/csv",
         headers={"Content-Disposition": 'attachment; filename="invoices.csv"'},
     )
+
+
+@app.get("/")
+def root():
+    return {"app": "Invoice Desk API", "docs": "/docs", "health": "/health"}
